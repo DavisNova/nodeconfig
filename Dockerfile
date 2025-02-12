@@ -6,10 +6,14 @@ WORKDIR /app
 RUN apk add --no-cache \
     curl \
     mysql-client \
-    qrencode
+    qrencode \
+    tzdata \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && apk del tzdata
 
-# 创建 src 目录
-RUN mkdir -p /app/src
+# 创建必要的目录
+RUN mkdir -p /app/src /app/logs
 
 # 先复制 package.json
 COPY src/package.json ./
@@ -19,23 +23,34 @@ RUN npm install \
     qrcode \
     moment \
     js-yaml \
-    uuid
+    uuid \
+    express-session \
+    connect-mysql \
+    winston \
+    bcryptjs \
+    && npm cache clean --force
 
-# 再复制其他文件
+# 复制源代码
 COPY src/ ./
 
 # 设置权限
-RUN chmod -R 755 /app
+RUN chmod -R 755 /app \
+    && chown -R node:node /app
+
+# 切换到非 root 用户
+USER node
 
 EXPOSE 3000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost:3000/ || exit 1
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # 等待 MySQL 就绪后启动应用
 COPY docker-entrypoint.sh /
+USER root
 RUN chmod +x /docker-entrypoint.sh
-ENTRYPOINT ["/docker-entrypoint.sh"]
+USER node
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
