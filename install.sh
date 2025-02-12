@@ -94,17 +94,142 @@ deploy_service() {
     mkdir -p /opt/nodeconfig
     cd /opt/nodeconfig
 
-    # 克隆项目
-    git clone https://github.com/DavisNova/nodeconfig.git .
+    # 如果目录不为空，先清理
+    if [ "$(ls -A /opt/nodeconfig)" ]; then
+        echo -e "${yellow}目录不为空，正在清理...${plain}"
+        rm -rf /opt/nodeconfig/*
+    fi
+
+    # 创建必要的文件
+    echo -e "${yellow}创建配置文件...${plain}"
+
+    # 创建 Dockerfile
+    echo -e "${yellow}创建 Dockerfile...${plain}"
+    cat > Dockerfile << 'EOF'
+FROM node:18-alpine
+
+WORKDIR /app
+
+# 先复制 package.json
+COPY src/package.json ./
+RUN npm install
+
+# 再复制其他文件
+COPY src/ ./
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+EOF
+
+    # 创建 docker-compose.yml
+    echo -e "${yellow}创建 docker-compose.yml...${plain}"
+    cat > docker-compose.yml << 'EOF'
+version: '3'
+services:
+  nodeconfig:
+    build: .
+    ports:
+      - "3000:3000"
+    restart: always
+    networks:
+      - nodeconfig_net
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - nodeconfig
+    restart: always
+    networks:
+      - nodeconfig_net
+
+networks:
+  nodeconfig_net:
+EOF
+
+    # 创建 nginx.conf
+    echo -e "${yellow}创建 Nginx 配置...${plain}"
+    cat > nginx.conf << 'EOF'
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        proxy_pass http://nodeconfig:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
+
+    # 创建 src 目录
+    echo -e "${yellow}创建源代码目录...${plain}"
+    mkdir -p src
+
+    # 创建 package.json
+    echo -e "${yellow}创建 package.json...${plain}"
+    cat > src/package.json << 'EOF'
+{
+  "name": "node-config-generator",
+  "version": "1.0.0",
+  "description": "节点配置生成工具",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "js-yaml": "^4.1.0"
+  }
+}
+EOF
+
+    # 克隆其他必要的源文件
+    echo -e "${yellow}下载源代码文件...${plain}"
+    curl -o src/index.html https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/index.html
+    curl -o src/server.js https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/server.js
+    curl -o src/template.yml https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/template.yml
+
+    # 设置权限
+    chmod -R 755 /opt/nodeconfig
 
     # 启动服务
-    docker-compose up -d
+    echo -e "${yellow}启动服务...${plain}"
+    docker-compose up -d --build
 
+    # 检查服务状态
     if [ $? -eq 0 ]; then
         echo -e "${green}服务部署完成！${plain}"
+        echo -e "${yellow}服务状态：${plain}"
+        docker-compose ps
     else
         echo -e "${red}服务部署失败！${plain}"
+        echo -e "${yellow}错误日志：${plain}"
+        docker-compose logs
     fi
+
+    # 等待服务启动
+    echo -e "${yellow}等待服务启动...${plain}"
+    sleep 5
+
+    # 检查服务可用性
+    if curl -s http://localhost:3000 > /dev/null; then
+        echo -e "${green}服务已成功启动！${plain}"
+        echo -e "${green}现在可以通过以下地址访问：${plain}"
+        echo -e "${yellow}http://localhost:3000${plain}"
+        echo -e "${yellow}http://服务器IP:3000${plain}"
+    else
+        echo -e "${red}服务启动可能存在问题，请检查日志${plain}"
+    fi
+
     sleep 2
 }
 
