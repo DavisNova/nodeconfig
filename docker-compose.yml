@@ -1,0 +1,27 @@
+cat > docker-compose.yml << 'EOF'
+version: '3'
+services:
+  nodeconfig:
+    build: .
+    ports:
+      - "3000:3000"
+    restart: always
+    networks:
+      - nodeconfig_net
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - nodeconfig
+    restart: always
+    networks:
+      - nodeconfig_net
+
+networks:
+  nodeconfig_net:
+EOF
