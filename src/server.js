@@ -95,7 +95,7 @@ app.get('/api/admin/subscriptions', async (req, res) => {
         
         let query = 'SELECT * FROM subscriptions WHERE 1=1';
         let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
-        const params = [];
+        let params = [];
         
         if (search) {
             query += ' AND (username LIKE ? OR description LIKE ?)';
@@ -109,13 +109,24 @@ app.get('/api/admin/subscriptions', async (req, res) => {
             params.push(status);
         }
         
-        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-        params.push(size, offset);
+        query += ' ORDER BY created_at DESC LIMIT ?, ?';
         
         const conn = await pool.getConnection();
         try {
-            const [subscriptions] = await conn.execute(query, params);
-            const [total] = await conn.execute(countQuery, params.slice(0, -2));
+            // 执行计数查询
+            const [total] = await conn.execute(countQuery, params);
+            
+            // 添加分页参数
+            params.push(offset, size);
+            
+            // 执行主查询
+            const [subscriptions] = await conn.execute(query, params.map(param => {
+                // 确保 LIMIT 和 OFFSET 参数为数字
+                if (typeof param === 'number') {
+                    return param;
+                }
+                return param;
+            }));
             
             res.json({
                 subscriptions,
