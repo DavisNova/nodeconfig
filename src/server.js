@@ -93,40 +93,52 @@ app.get('/api/admin/subscriptions', async (req, res) => {
         
         const offset = (page - 1) * size;
         
-        let query = 'SELECT * FROM subscriptions WHERE 1=1';
-        let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
-        const params = [];
-        
-        if (search) {
-            query += ' AND (username LIKE ? OR description LIKE ?)';
-            countQuery += ' AND (username LIKE ? OR description LIKE ?)';
-            params.push(`%${search}%`, `%${search}%`);
-        }
-        
-        if (status) {
-            query += ' AND status = ?';
-            countQuery += ' AND status = ?';
-            params.push(status);
-        }
-        
-        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-        params.push(size, offset);
-        
         const conn = await pool.getConnection();
         try {
-            const [subscriptions] = await conn.execute(query, params);
-            const [total] = await conn.execute(countQuery, params.slice(0, -2));
+            let query = 'SELECT * FROM subscriptions WHERE 1=1';
+            let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
+            let params = [];
+            
+            if (search) {
+                query += ` AND (username LIKE '%${search}%' OR description LIKE '%${search}%')`;
+                countQuery += ` AND (username LIKE '%${search}%' OR description LIKE '%${search}%')`;
+            }
+            
+            if (status) {
+                query += ` AND status = '${status}'`;
+                countQuery += ` AND status = '${status}'`;
+            }
+            
+            // 执行计数查询
+            const [totalRows] = await conn.query(countQuery);
+            
+            // 添加分页并执行主查询
+            query += ` ORDER BY created_at DESC LIMIT ${size} OFFSET ${offset}`;
+            const [subscriptions] = await conn.query(query);
+            
+            // 格式化日期
+            const formattedSubscriptions = subscriptions.map(sub => ({
+                ...sub,
+                created_at: sub.created_at ? moment(sub.created_at).format('YYYY-MM-DD HH:mm:ss') : null,
+                updated_at: sub.updated_at ? moment(sub.updated_at).format('YYYY-MM-DD HH:mm:ss') : null
+            }));
             
             res.json({
-                subscriptions,
-                total: total[0].total
+                subscriptions: formattedSubscriptions,
+                total: totalRows[0].total,
+                page,
+                size
             });
         } finally {
             conn.release();
         }
     } catch (error) {
         console.error('Error getting subscriptions:', error);
-        res.status(500).json({ error: true, message: '获取订阅列表失败' });
+        res.status(500).json({ 
+            error: true, 
+            message: '获取订阅列表失败',
+            details: error.message 
+        });
     }
 });
 
