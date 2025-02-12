@@ -1,6 +1,6 @@
 FROM node:18-alpine
 
-WORKDIR /app
+WORKDIR /app/src
 
 # 修改 apk 源为国内源并安装依赖
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
@@ -8,22 +8,27 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     && apk add --no-cache \
     curl \
     mysql-client \
-    tzdata
+    tzdata \
+    git
 
 # 设置时区
 RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone \
     && apk del tzdata
 
-# 创建目录
-RUN mkdir -p /app/src
+# 复制 package.json 和 package-lock.json（如果存在）
+COPY src/package*.json ./
 
-# 复制源代码
-COPY src/ /app/src/
-WORKDIR /app/src
+# 使用淘宝镜像源安装依赖
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm install \
+    && npm cache clean --force
 
-# 安装依赖
-RUN npm install
+# 复制其他源代码
+COPY src/ .
+
+# 创建日志目录
+RUN mkdir -p /app/logs
 
 # 设置权限
 RUN chown -R node:node /app \
@@ -38,4 +43,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s \
     CMD curl -f http://localhost:3000/ || exit 1
 
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
