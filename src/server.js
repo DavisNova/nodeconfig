@@ -581,8 +581,10 @@ app.post('/api/save', async (req, res) => {
 // 获取订阅配置
 app.get('/subscribe/:id', async (req, res) => {
     try {
+        console.log('订阅请求参数:', req.params.id);
+        
         const [rows] = await pool.execute(
-            'SELECT node_config FROM subscriptions WHERE subscription_url LIKE ?',
+            'SELECT * FROM subscriptions WHERE subscription_url LIKE ?',
             [`%${req.params.id}%`]
         );
 
@@ -596,14 +598,12 @@ app.get('/subscribe/:id', async (req, res) => {
         const nodes = JSON.parse(rows[0].node_config);
         const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
         
-        // 更新配置
         template.proxies = nodes.map(node => {
             return node.startsWith('vless://') ? 
                 parseVlessLink(node) : 
                 parseSocks5Link(node);
         }).filter(Boolean);
 
-        // 更新代理组
         updateProxyGroups(template, template.proxies);
 
         const yamlStr = yaml.dump(template, {
@@ -611,15 +611,15 @@ app.get('/subscribe/:id', async (req, res) => {
             noRefs: true
         });
 
-        // 记录访问统计
-        const conn = await pool.getConnection();
+        // 修改这里的访问统计记录
         try {
-            await conn.execute(
+            await pool.execute(
                 'INSERT INTO access_stats (subscription_id, ip_address, user_agent) VALUES (?, ?, ?)',
-                [rows[0].id, req.ip, req.headers['user-agent']]
+                [rows[0].id || null, req.ip || null, req.headers['user-agent'] || null]
             );
-        } finally {
-            conn.release();
+        } catch (statError) {
+            console.error('记录访问统计失败:', statError);
+            // 继续处理，不影响订阅返回
         }
 
         res.setHeader('Content-Type', 'application/yaml');
@@ -627,10 +627,11 @@ app.get('/subscribe/:id', async (req, res) => {
         res.send(yamlStr);
 
     } catch (error) {
-        console.error('Error serving subscription:', error);
+        console.error('订阅处理错误:', error);
         res.status(500).json({
             error: true,
-            message: '获取订阅配置时发生错误'
+            message: '获取订阅配置时发生错误',
+            details: error.message
         });
     }
 });
