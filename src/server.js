@@ -36,7 +36,22 @@ app.use(session({
     cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24小时
 }));
 
+// 中间件配置
 app.use(express.json());
+
+// 请求日志中间件
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+});
+
+// Admin 路由 - 必须在静态文件服务之前
+app.get('/admin', (req, res) => {
+    console.log('访问 admin 页面');
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+// 静态文件服务
 app.use(express.static(path.join(__dirname)));
 
 // 解析 vless 链接
@@ -372,6 +387,23 @@ app.get('/subscribe/:id', async (req, res) => {
             message: '获取订阅配置时发生错误'
         });
     }
+});
+
+// 错误处理中间件
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({
+        error: true,
+        message: '服务器内部错误'
+    });
+});
+
+// 404 处理
+app.use((req, res) => {
+    res.status(404).json({
+        error: true,
+        message: '页面不存在'
+    });
 });
 
 // 启动服务器
