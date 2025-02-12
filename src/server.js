@@ -654,15 +654,15 @@ app.use((req, res) => {
 
 // 更新代理组配置
 function updateProxyGroups(template, proxies) {
-    if (!template.proxy-groups) {
-        template['proxy-groups'] = [];
+    if (!template.proxy_groups) {
+        template.proxy_groups = [];
     }
 
     // 获取所有代理名称
     const proxyNames = proxies.map(proxy => proxy.name);
 
     // 更新或创建代理组
-    template['proxy-groups'] = [
+    template.proxy_groups = [
         {
             name: '🚀 节点选择',
             type: 'select',
