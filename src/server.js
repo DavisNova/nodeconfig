@@ -667,32 +667,42 @@ function updateProxyGroups(template, proxies) {
         proxyNames.push('DIRECT');
     }
 
+// 更新代理组配置
+function updateProxyGroups(template, proxies) {
+    if (!Array.isArray(proxies)) {
+        console.error('Invalid proxies input');
+        proxies = [];
+    }
+
+    // 获取所有代理名称
+    const proxyNames = proxies.map(proxy => proxy.name);
+    
+    // 确保至少有一个代理
+    if (proxyNames.length === 0) {
+        proxyNames.push('DIRECT');
+    }
+
     // 更新代理组配置
     template.proxy_groups = [
         {
             name: '🚀 节点选择',
             type: 'select',
-            proxies: ['♻️ 自动选择', '🔰 故障转移', '🎯 全球直连', ...proxyNames]
+            proxies: ['♻️ 自动选择', '🔯 故障转移', 'DIRECT', ...proxyNames]
         },
         {
             name: '♻️ 自动选择',
             type: 'url-test',
+            proxies: [...proxyNames],  // 使用实际的节点列表
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
-            tolerance: 50,
-            proxies: [...proxyNames]  // 确保是新数组
+            tolerance: 50
         },
         {
-            name: '🔰 故障转移',
+            name: '🔯 故障转移',
             type: 'fallback',
+            proxies: [...proxyNames],  // 使用实际的节点列表
             url: 'http://www.gstatic.com/generate_204',
-            interval: 300,
-            proxies: [...proxyNames]  // 确保是新数组
-        },
-        {
-            name: '🎯 全球直连',
-            type: 'select',
-            proxies: ['DIRECT']
+            interval: 300
         },
         {
             name: '🌍 国外媒体',
@@ -715,14 +725,16 @@ function updateProxyGroups(template, proxies) {
             proxies: ['🎯 全球直连', '🚀 节点选择']
         },
         {
+            name: '🎯 全球直连',
+            type: 'select',
+            proxies: ['DIRECT', '🚀 节点选择']
+        },
+        {
             name: '🛑 全球拦截',
             type: 'select',
             proxies: ['REJECT', 'DIRECT']
         }
     ];
-
-    // 删除可能存在的重复 proxy_groups
-    delete template.proxy_groups;
 }
 
 // 启动服务器
