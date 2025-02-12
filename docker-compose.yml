@@ -5,8 +5,30 @@ services:
     ports:
       - "3000:3000"
     restart: always
+    environment:
+      - DB_HOST=mysql
+      - DB_USER=nodeconfig
+      - DB_PASSWORD=nodeconfig123
+      - DB_NAME=nodeconfig_db
+    depends_on:
+      - mysql
+    networks:
+      - nodeconfig_net
+
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=nodeconfig_db
+      - MYSQL_USER=nodeconfig
+      - MYSQL_PASSWORD=nodeconfig123
     volumes:
-      - ./src:/app/src
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3306:3306"
     networks:
       - nodeconfig_net
 
@@ -22,6 +44,21 @@ services:
     restart: always
     networks:
       - nodeconfig_net
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8080:80"
+    environment:
+      - PMA_HOST=mysql
+      - MYSQL_ROOT_PASSWORD=root123
+    depends_on:
+      - mysql
+    networks:
+      - nodeconfig_net
+
+volumes:
+  mysql_data:
 
 networks:
   nodeconfig_net:
