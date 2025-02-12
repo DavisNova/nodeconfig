@@ -54,38 +54,231 @@ app.get('/admin', (req, res) => {
 // 静态文件服务
 app.use(express.static(path.join(__dirname)));
 
-// 更新代理组配置的函数
-function updateProxyGroups(template, proxies) {
-    const proxyNames = proxies.map(p => p.name);
-    
-    template['proxy-groups'].forEach(group => {
-        switch(group.name) {
-            case '🚀 节点选择':
-                group.proxies = ['♻️ 自动选择', '🔯 故障转移', 'DIRECT', ...proxyNames];
-                break;
-            case '♻️ 自动选择':
-            case '🔯 故障转移':
-                group.proxies = [...proxyNames];
-                break;
-            case '🌍 国外媒体':
-            case '📲 电报信息':
-                group.proxies = ['🚀 节点选择', '♻️ 自动选择', '🎯 全球直连'];
-                break;
-            case 'Ⓜ️ 微软服务':
-            case '🍎 苹果服务':
-                group.proxies = ['🎯 全球直连', '🚀 节点选择'];
-                break;
-            case '🎯 全球直连':
-                group.proxies = ['DIRECT', '🚀 节点选择'];
-                break;
-            case '🛑 全球拦截':
-                group.proxies = ['REJECT', 'DIRECT'];
-                break;
+// 管理后台 API
+
+// 获取统计数据
+app.get('/api/admin/stats', async (req, res) => {
+    try {
+        const conn = await pool.getConnection();
+        try {
+            const [subscriptions] = await conn.execute('SELECT COUNT(*) as total FROM subscriptions');
+            const [activeUsers] = await conn.execute('SELECT COUNT(DISTINCT username) as total FROM subscriptions WHERE status = "active"');
+            const [nodes] = await conn.execute('SELECT COUNT(*) as total FROM nodes');
+            const [todayVisits] = await conn.execute(
+                'SELECT COUNT(*) as total FROM access_stats WHERE DATE(access_time) = CURDATE()'
+            );
+
+            res.json({
+                totalSubscriptions: subscriptions[0].total,
+                activeUsers: activeUsers[0].total,
+                totalNodes: nodes[0].total,
+                todayVisits: todayVisits[0].total
+            });
+        } finally {
+            conn.release();
         }
-    });
-    
-    return template;
-}
+    } catch (error) {
+        console.error('Error getting stats:', error);
+        res.status(500).json({ error: true, message: '获取统计数据失败' });
+    }
+});
+
+// 获取订阅列表
+app.get('/api/admin/subscriptions', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const size = parseInt(req.query.size) || 10;
+        const search = req.query.search || '';
+        const status = req.query.status || '';
+        
+        const offset = (page - 1) * size;
+        
+        let query = 'SELECT * FROM subscriptions WHERE 1=1';
+        let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
+        const params = [];
+        
+        if (search) {
+            query += ' AND (username LIKE ? OR description LIKE ?)';
+            countQuery += ' AND (username LIKE ? OR description LIKE ?)';
+            params.push(`%${search}%`, `%${search}%`);
+        }
+        
+        if (status) {
+            query += ' AND status = ?';
+            countQuery += ' AND status = ?';
+            params.push(status);
+        }
+        
+        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+        params.push(size, offset);
+        
+        const conn = await pool.getConnection();
+        try {
+            const [subscriptions] = await conn.execute(query, params);
+            const [total] = await conn.execute(countQuery, params.slice(0, -2));
+            
+            res.json({
+                subscriptions,
+                total: total[0].total
+            });
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Error getting subscriptions:', error);
+        res.status(500).json({ error: true, message: '获取订阅列表失败' });
+    }
+});
+
+// 获取订阅详情
+app.get('/api/admin/subscriptions/:id', async (req, res) => {
+    try {
+        const conn = await pool.getConnection();
+        try {
+            const [subscription] = await conn.execute(
+                'SELECT s.*, GROUP_CONCAT(n.node_url) as nodes FROM subscriptions s LEFT JOIN nodes n ON s.id = n.subscription_id WHERE s.id = ? GROUP BY s.id',
+                [req.params.id]
+            );
+
+            if (subscription.length === 0) {
+                return res.status(404).json({ error: true, message: '订阅不存在' });
+            }
+
+            // 生成 YAML 配置
+            const nodes = subscription[0].nodes ? subscription[0].nodes.split(',') : [];
+            const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
+            template.proxies = nodes.map(node => {
+                return node.startsWith('vless://') ? parseVlessLink(node) : parseSocks5Link(node);
+            }).filter(Boolean);
+
+            subscription[0].yaml_config = yaml.dump(template);
+
+            res.json(subscription[0]);
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Error getting subscription details:', error);
+        res.status(500).json({ error: true, message: '获取订阅详情失败' });
+    }
+});
+
+// 编辑订阅
+app.put('/api/admin/subscriptions/:id', async (req, res) => {
+    try {
+        const { username, description, status, nodes } = req.body;
+        
+        if (!username) {
+            return res.status(400).json({
+                error: true,
+                message: '用户名不能为空'
+            });
+        }
+
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+
+            // 更新订阅基本信息
+            await conn.execute(
+                'UPDATE subscriptions SET username = ?, description = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                [username, description, status, req.params.id]
+            );
+
+            // 如果提供了新的节点配置，更新节点
+            if (nodes && nodes.length > 0) {
+                // 删除旧节点
+                await conn.execute('DELETE FROM nodes WHERE subscription_id = ?', [req.params.id]);
+                
+                // 添加新节点
+                for (const node of nodes) {
+                    await conn.execute(
+                        'INSERT INTO nodes (subscription_id, node_type, node_url) VALUES (?, ?, ?)',
+                        [req.params.id, node.startsWith('vless://') ? 'vless' : 'socks5', node]
+                    );
+                }
+            }
+
+            await conn.commit();
+            
+            res.json({
+                success: true,
+                message: '订阅更新成功'
+            });
+        } catch (error) {
+            await conn.rollback();
+            throw error;
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Error updating subscription:', error);
+        res.status(500).json({
+            error: true,
+            message: '更新订阅失败'
+        });
+    }
+});
+
+// 删除订阅
+app.delete('/api/admin/subscriptions/:id', async (req, res) => {
+    try {
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+
+            // 先删除关联的节点
+            await conn.execute('DELETE FROM nodes WHERE subscription_id = ?', [req.params.id]);
+            
+            // 再删除订阅
+            const [result] = await conn.execute('DELETE FROM subscriptions WHERE id = ?', [req.params.id]);
+            
+            await conn.commit();
+
+            if (result.affectedRows === 0) {
+                return res.status(404).json({
+                    error: true,
+                    message: '订阅不存在'
+                });
+            }
+
+            res.json({
+                success: true,
+                message: '订阅删除成功'
+            });
+        } catch (error) {
+            await conn.rollback();
+            throw error;
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Error deleting subscription:', error);
+        res.status(500).json({
+            error: true,
+            message: '删除订阅失败'
+        });
+    }
+});
+
+// 记录访问统计
+app.post('/api/admin/access-stats', async (req, res) => {
+    try {
+        const conn = await pool.getConnection();
+        try {
+            await conn.execute(
+                'INSERT INTO access_stats (ip_address, user_agent) VALUES (?, ?)',
+                [req.ip, req.headers['user-agent']]
+            );
+            res.json({ success: true });
+        } finally {
+            conn.release();
+        }
+    } catch (error) {
+        console.error('Error recording access stats:', error);
+        res.status(500).json({ error: true });
+    }
+});
 
 // 解析 vless 链接
 function parseVlessLink(link) {
@@ -347,6 +540,12 @@ app.post('/api/save', async (req, res) => {
 
             await conn.commit();
 
+            // 记录操作日志
+            await conn.execute(
+                'INSERT INTO operation_logs (operation_type, operator, target_id, details) VALUES (?, ?, ?, ?)',
+                ['create_subscription', username, result.insertId, '创建新订阅']
+            );
+
             res.json({
                 success: true,
                 subscriptionUrl,
@@ -400,6 +599,17 @@ app.get('/subscribe/:id', async (req, res) => {
             noRefs: true
         });
 
+        // 记录访问统计
+        const conn = await pool.getConnection();
+        try {
+            await conn.execute(
+                'INSERT INTO access_stats (subscription_id, ip_address, user_agent) VALUES (?, ?, ?)',
+                [rows[0].id, req.ip, req.headers['user-agent']]
+            );
+        } finally {
+            conn.release();
+        }
+
         res.setHeader('Content-Type', 'application/yaml');
         res.setHeader('Content-Disposition', 'attachment; filename=config.yaml');
         res.send(yamlStr);
@@ -435,4 +645,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`服务器运行在端口 ${PORT}`);
 });
+
 
