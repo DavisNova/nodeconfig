@@ -109,35 +109,39 @@ app.get('/api/admin/subscriptions', async (req, res) => {
             params.push(status);
         }
         
-        query += ' ORDER BY created_at DESC LIMIT ?, ?';
-        
         const conn = await pool.getConnection();
         try {
             // 执行计数查询
             const [total] = await conn.execute(countQuery, params);
             
-            // 添加分页参数
-            params.push(offset, size);
+            // 添加分页参数并执行主查询
+            query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+            const queryParams = [...params, size, offset];
+            const [subscriptions] = await conn.execute(query, queryParams);
             
-            // 执行主查询
-            const [subscriptions] = await conn.execute(query, params.map(param => {
-                // 确保 LIMIT 和 OFFSET 参数为数字
-                if (typeof param === 'number') {
-                    return param;
-                }
-                return param;
+            // 格式化响应数据
+            const formattedSubscriptions = subscriptions.map(sub => ({
+                ...sub,
+                created_at: sub.created_at ? new Date(sub.created_at).toISOString() : null,
+                updated_at: sub.updated_at ? new Date(sub.updated_at).toISOString() : null
             }));
-            
+
             res.json({
-                subscriptions,
-                total: total[0].total
+                subscriptions: formattedSubscriptions,
+                total: total[0].total,
+                page,
+                size
             });
         } finally {
             conn.release();
         }
     } catch (error) {
         console.error('Error getting subscriptions:', error);
-        res.status(500).json({ error: true, message: '获取订阅列表失败' });
+        res.status(500).json({ 
+            error: true, 
+            message: '获取订阅列表失败',
+            details: error.message 
+        });
     }
 });
 
