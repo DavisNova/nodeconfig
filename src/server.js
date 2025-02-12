@@ -667,8 +667,12 @@ function updateProxyGroups(template, proxies) {
         proxyNames.push('DIRECT');
     }
 
-    // 更新代理组配置
-    template.proxy_groups = [
+    // 删除旧的代理组配置
+    delete template.proxy_groups;  // 删除下划线版本
+    delete template['proxy-groups'];  // 删除横线版本
+
+    // 统一使用 proxy-groups 格式
+    template['proxy-groups'] = [
         {
             name: '🚀 节点选择',
             type: 'select',
@@ -677,7 +681,7 @@ function updateProxyGroups(template, proxies) {
         {
             name: '♻️ 自动选择',
             type: 'url-test',
-            proxies: [...proxyNames],  // 使用实际的节点列表
+            proxies: [...proxyNames],
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
             tolerance: 50
@@ -685,7 +689,7 @@ function updateProxyGroups(template, proxies) {
         {
             name: '🔯 故障转移',
             type: 'fallback',
-            proxies: [...proxyNames],  // 使用实际的节点列表
+            proxies: [...proxyNames],
             url: 'http://www.gstatic.com/generate_204',
             interval: 300
         },
