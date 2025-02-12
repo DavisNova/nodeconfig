@@ -661,13 +661,18 @@ function updateProxyGroups(template, proxies) {
 
     // 获取所有代理名称
     const proxyNames = proxies.map(proxy => proxy.name);
+    
+    // 确保至少有一个代理
+    if (proxyNames.length === 0) {
+        proxyNames.push('DIRECT');
+    }
 
     // 更新代理组配置
     template.proxy_groups = [
         {
             name: '🚀 节点选择',
             type: 'select',
-            proxies: ['♻️ 自动选择', '🎯 全球直连', ...proxyNames]
+            proxies: ['♻️ 自动选择', '🔰 故障转移', '🎯 全球直连', ...proxyNames]
         },
         {
             name: '♻️ 自动选择',
@@ -675,19 +680,19 @@ function updateProxyGroups(template, proxies) {
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
             tolerance: 50,
-            proxies: proxyNames
-        },
-        {
-            name: '🎯 全球直连',
-            type: 'select',
-            proxies: ['DIRECT']
+            proxies: [...proxyNames]  // 确保是新数组
         },
         {
             name: '🔰 故障转移',
             type: 'fallback',
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
-            proxies: proxyNames
+            proxies: [...proxyNames]  // 确保是新数组
+        },
+        {
+            name: '🎯 全球直连',
+            type: 'select',
+            proxies: ['DIRECT']
         },
         {
             name: '🌍 国外媒体',
@@ -715,6 +720,9 @@ function updateProxyGroups(template, proxies) {
             proxies: ['REJECT', 'DIRECT']
         }
     ];
+
+    // 删除可能存在的重复 proxy_groups
+    delete template.proxy_groups;
 }
 
 // 启动服务器
