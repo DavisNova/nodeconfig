@@ -16,7 +16,10 @@ const dbConfig = {
     host: process.env.DB_HOST || 'mysql',
     user: process.env.DB_USER || 'nodeconfig',
     password: process.env.DB_PASSWORD || 'nodeconfig123',
-    database: process.env.DB_NAME || 'nodeconfig_db'
+    database: process.env.DB_NAME || 'nodeconfig_db',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 };
 
 // 创建数据库连接池
@@ -36,9 +39,234 @@ app.use(session({
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// 原有的解析函数保持不变...
+// 解析 vless 链接
+function parseVlessLink(link) {
+    try {
+        const regex = /vless:\/\/([^@]+)@([^:]+):(\d+)\?(.*)/;
+        const match = link.match(regex);
+        if (!match) {
+            console.log('Invalid VLESS link format');
+            return null;
+        }
 
-// 新增：保存配置到数据库
+        const [_, uuid, server, port, params] = match;
+        const paramsObj = Object.fromEntries(
+            params.split('&').map(p => {
+                const [key, value] = p.split('=');
+                return [key, decodeURIComponent(value || '')];
+            })
+        );
+
+        return {
+            name: `vless-${server}-${port}`,
+            type: 'vless',
+            server,
+            port: parseInt(port),
+            uuid,
+            network: paramsObj.type || 'tcp',
+            udp: true,
+            tls: true,
+            flow: 'xtls-rprx-vision',
+            servername: paramsObj.sni || 'yahoo.com',
+            'reality-opts': {
+                'public-key': paramsObj.pbk || '',
+                'short-id': paramsObj.sid || ''
+            },
+            'client-fingerprint': paramsObj.fp || 'chrome'
+        };
+    } catch (error) {
+        console.error('Error parsing VLESS link:', error);
+        return null;
+    }
+}
+
+// 解析 socks5 链接
+function parseSocks5Link(link) {
+    try {
+        const parts = link.split(':');
+        if (parts.length !== 4) {
+            console.log('Invalid SOCKS5 link format');
+            return null;
+        }
+
+        const [server, port, username, password] = parts;
+        
+        // 验证端口号
+        const portNum = parseInt(port);
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+            console.log('Invalid port number');
+            return null;
+        }
+
+        return {
+            name: `socks5-${server}-${port}`,
+            type: 'socks5',
+            server,
+            port: portNum,
+            username,
+            password,
+            'skip-cert-verify': true,
+            udp: true
+        };
+    } catch (error) {
+        console.error('Error parsing SOCKS5 link:', error);
+        return null;
+    }
+}
+
+// 检查配置格式
+app.post('/api/check', (req, res) => {
+    try {
+        const { nodes } = req.body;
+        const proxies = [];
+        const errors = [];
+        const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
+
+        if (!nodes || nodes.length === 0) {
+            return res.status(400).json({ 
+                error: true, 
+                message: '请提供至少一个节点链接' 
+            });
+        }
+
+        nodes.forEach((node, index) => {
+            const trimmedNode = node.trim();
+            if (!trimmedNode) return;
+
+            let proxy = null;
+            if (trimmedNode.startsWith('vless://')) {
+                proxy = parseVlessLink(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 VLESS 节点格式错误`);
+                }
+            } else if (trimmedNode.includes(':')) {
+                proxy = parseSocks5Link(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 SOCKS5 节点格式错误`);
+                }
+            } else {
+                errors.push(`第 ${index + 1} 个节点格式无法识别`);
+            }
+
+            if (proxy) {
+                proxies.push(proxy);
+            }
+        });
+
+        if (errors.length > 0) {
+            return res.status(400).json({
+                error: true,
+                message: errors.join('\n')
+            });
+        }
+
+        // 更新配置
+        template.proxies = proxies;
+        
+        // 更新代理组
+        const morenGroup = template['proxy-groups'].find(g => g.name === 'moren');
+        if (morenGroup) {
+            morenGroup.proxies = proxies.map(p => p.name);
+        }
+
+        // 生成 YAML 字符串
+        const yamlStr = yaml.dump(template, {
+            lineWidth: -1,
+            noRefs: true
+        });
+
+        res.json({
+            error: false,
+            message: '配置格式正确',
+            yaml: yamlStr
+        });
+
+    } catch (error) {
+        console.error('Error checking config:', error);
+        res.status(500).json({ 
+            error: true, 
+            message: '检查配置时发生错误' 
+        });
+    }
+});
+
+// 生成配置文件
+app.post('/api/generate', (req, res) => {
+    try {
+        const { nodes } = req.body;
+        
+        if (!nodes || nodes.length === 0) {
+            return res.status(400).json({ 
+                error: true, 
+                message: '请提供至少一个节点链接' 
+            });
+        }
+
+        const proxies = [];
+        const errors = [];
+        const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
+
+        nodes.forEach((node, index) => {
+            const trimmedNode = node.trim();
+            if (!trimmedNode) return;
+
+            let proxy = null;
+            if (trimmedNode.startsWith('vless://')) {
+                proxy = parseVlessLink(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 VLESS 节点格式错误`);
+                }
+            } else if (trimmedNode.includes(':')) {
+                proxy = parseSocks5Link(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 SOCKS5 节点格式错误`);
+                }
+            } else {
+                errors.push(`第 ${index + 1} 个节点格式无法识别`);
+            }
+
+            if (proxy) {
+                proxies.push(proxy);
+            }
+        });
+
+        if (errors.length > 0) {
+            return res.status(400).json({
+                error: true,
+                message: errors.join('\n')
+            });
+        }
+
+        // 更新配置
+        template.proxies = proxies;
+        
+        // 更新代理组
+        const morenGroup = template['proxy-groups'].find(g => g.name === 'moren');
+        if (morenGroup) {
+            morenGroup.proxies = proxies.map(p => p.name);
+        }
+
+        // 生成 YAML 字符串
+        const yamlStr = yaml.dump(template, {
+            lineWidth: -1,
+            noRefs: true
+        });
+
+        // 发送响应
+        res.setHeader('Content-Type', 'application/yaml');
+        res.setHeader('Content-Disposition', 'attachment; filename=config.yaml');
+        res.send(yamlStr);
+
+    } catch (error) {
+        console.error('Error generating config:', error);
+        res.status(500).json({ 
+            error: true, 
+            message: '生成配置文件时发生错误' 
+        });
+    }
+});
+
+// 保存配置
 app.post('/api/save', async (req, res) => {
     try {
         const { username, description, nodes } = req.body;
@@ -54,9 +282,11 @@ app.post('/api/save', async (req, res) => {
         try {
             await conn.beginTransaction();
 
-            // 生成订阅链接和二维码
+            // 生成订阅ID
             const subscriptionId = uuidv4();
             const subscriptionUrl = `${req.protocol}://${req.get('host')}/subscribe/${subscriptionId}`;
+            
+            // 生成二维码
             const qrcodeDataUrl = await QRCode.toDataURL(subscriptionUrl);
 
             // 保存订阅信息
@@ -95,7 +325,7 @@ app.post('/api/save', async (req, res) => {
     }
 });
 
-// 订阅链接访问
+// 获取订阅配置
 app.get('/subscribe/:id', async (req, res) => {
     try {
         const [rows] = await pool.execute(
@@ -144,38 +374,7 @@ app.get('/subscribe/:id', async (req, res) => {
     }
 });
 
-// 管理接口
-app.get('/api/subscriptions', async (req, res) => {
-    try {
-        const [rows] = await pool.execute(
-            'SELECT id, username, description, subscription_url, created_at, updated_at FROM subscriptions ORDER BY created_at DESC'
-        );
-        res.json(rows);
-    } catch (error) {
-        console.error('Error fetching subscriptions:', error);
-        res.status(500).json({
-            error: true,
-            message: '获取订阅列表失败'
-        });
-    }
-});
-
-// 删除订阅
-app.delete('/api/subscriptions/:id', async (req, res) => {
-    try {
-        await pool.execute('DELETE FROM subscriptions WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Error deleting subscription:', error);
-        res.status(500).json({
-            error: true,
-            message: '删除订阅失败'
-        });
-    }
-});
-
-// 原有的其他接口保持不变...
-
+// 启动服务器
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`服务器运行在端口 ${PORT}`);
