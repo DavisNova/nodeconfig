@@ -93,45 +93,40 @@ app.get('/api/admin/subscriptions', async (req, res) => {
         
         const offset = (page - 1) * size;
         
+        let query = 'SELECT * FROM subscriptions WHERE 1=1';
+        let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
+        const params = [];
+        
+        if (search) {
+            query += ' AND (username LIKE ? OR description LIKE ?)';
+            countQuery += ' AND (username LIKE ? OR description LIKE ?)';
+            params.push(`%${search}%`, `%${search}%`);
+        }
+        
+        if (status) {
+            query += ' AND status = ?';
+            countQuery += ' AND status = ?';
+            params.push(status);
+        }
+        
+        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+        params.push(size, offset);
+        
         const conn = await pool.getConnection();
         try {
-            let query = 'SELECT * FROM subscriptions WHERE 1=1';
-            let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
-            let params = [];
-            
-            if (search) {
-                query += ` AND (username LIKE '%${search}%' OR description LIKE '%${search}%')`;
-                countQuery += ` AND (username LIKE '%${search}%' OR description LIKE '%${search}%')`;
-            }
-            
-            if (status) {
-                query += ` AND status = '${status}'`;
-                countQuery += ` AND status = '${status}'`;
-            }
-            
-            // 执行计数查询
-            const [totalRows] = await conn.query(countQuery);
-            
-            // 添加分页并执行主查询
-            query += ` ORDER BY created_at DESC LIMIT ${size} OFFSET ${offset}`;
-            const [subscriptions] = await conn.query(query);
+            const [subscriptions] = await conn.execute(query, params);
+            const [total] = await conn.execute(countQuery, params.slice(0, -2));
             
             res.json({
                 subscriptions,
-                total: totalRows[0].total,
-                page,
-                size
+                total: total[0].total
             });
         } finally {
             conn.release();
         }
     } catch (error) {
         console.error('Error getting subscriptions:', error);
-        res.status(500).json({ 
-            error: true, 
-            message: '获取订阅列表失败',
-            details: error.message 
-        });
+        res.status(500).json({ error: true, message: '获取订阅列表失败' });
     }
 });
 
@@ -650,5 +645,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`服务器运行在端口 ${PORT}`);
 });
-
 
