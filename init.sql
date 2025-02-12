@@ -89,3 +89,12 @@ CREATE TABLE IF NOT EXISTS access_stats (
     INDEX idx_access_time (access_time),
     FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='访问统计表';
+
+-- 创建会话表
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id VARCHAR(128) NOT NULL PRIMARY KEY,
+    expires INT(11) unsigned NOT NULL,
+    data TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话表';
