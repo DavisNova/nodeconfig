@@ -25,11 +25,8 @@ function parseVlessLink(link) {
             })
         );
 
-        // 生成节点名称
-        const name = `vless-${server}-${port}`;
-
         return {
-            name,
+            name: `vless-${server}-${port}`,
             type: 'vless',
             server,
             port: parseInt(port),
@@ -85,23 +82,21 @@ function parseSocks5Link(link) {
     }
 }
 
-// 生成配置的 API 端点
-app.post('/api/generate', (req, res) => {
+// 检查配置格式
+app.post('/api/check', (req, res) => {
     try {
         const { nodes } = req.body;
-        
-        if (!Array.isArray(nodes) || nodes.length === 0) {
+        const proxies = [];
+        const errors = [];
+        const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
+
+        if (!nodes || nodes.length === 0) {
             return res.status(400).json({ 
                 error: true, 
-                message: '请提供至少一个有效的节点链接' 
+                message: '请提供至少一个节点链接' 
             });
         }
 
-        const proxies = [];
-        const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
-        const errors = [];
-
-        // 解析每个节点
         nodes.forEach((node, index) => {
             const trimmedNode = node.trim();
             if (!trimmedNode) return;
@@ -126,11 +121,10 @@ app.post('/api/generate', (req, res) => {
             }
         });
 
-        // 如果没有有效节点
-        if (proxies.length === 0) {
+        if (errors.length > 0) {
             return res.status(400).json({
                 error: true,
-                message: '没有找到有效的节点配置\n' + errors.join('\n')
+                message: errors.join('\n')
             });
         }
 
@@ -145,8 +139,92 @@ app.post('/api/generate', (req, res) => {
 
         // 生成 YAML 字符串
         const yamlStr = yaml.dump(template, {
-            lineWidth: -1,  // 不限制行宽
-            noRefs: true    // 不使用引用
+            lineWidth: -1,
+            noRefs: true
+        });
+
+        res.json({
+            error: false,
+            message: '配置格式正确',
+            yaml: yamlStr
+        });
+
+    } catch (error) {
+        console.error('Error checking config:', error);
+        res.status(500).json({ 
+            error: true, 
+            message: '检查配置时发生错误' 
+        });
+    }
+});
+
+// 生成配置文件
+app.post('/api/generate', (req, res) => {
+    try {
+        const { nodes } = req.body;
+        
+        if (!nodes || nodes.length === 0) {
+            return res.status(400).json({ 
+                error: true, 
+                message: '请提供至少一个节点链接' 
+            });
+        }
+
+        const proxies = [];
+        const errors = [];
+        const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
+
+        nodes.forEach((node, index) => {
+            const trimmedNode = node.trim();
+            if (!trimmedNode) return;
+
+            let proxy = null;
+            if (trimmedNode.startsWith('vless://')) {
+                proxy = parseVlessLink(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 VLESS 节点格式错误`);
+                }
+            } else if (trimmedNode.includes(':')) {
+                proxy = parseSocks5Link(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 SOCKS5 节点格式错误`);
+                }
+            } else {
+                errors.push(`第 ${index + 1} 个节点格式无法识别`);
+            }
+
+            if (proxy) {
+                proxies.push(proxy);
+            }
+        });
+
+        if (errors.length > 0) {
+            return res.status(400).json({
+                error: true,
+                message: errors.join('\n')
+            });
+        }
+
+        if (proxies.length === 0) {
+            return res.status(400).json({
+                error: true,
+                message: '没有找到有效的节点配置'
+            });
+        }
+
+        // 更新配置
+        template.proxies = proxies;
+        
+        // 更新代理组
+        const morenGroup = template['proxy-groups'].find(g => g.name === 'moren');
+        if (morenGroup) {
+            morenGroup.proxies = proxies.map(p => p.name);
+        }
+
+        // 生成 YAML 字符串
+        const yamlStr = yaml.dump(template, {
+            lineWidth: -1,
+            noRefs: true
         });
 
         // 发送响应
