@@ -54,6 +54,39 @@ app.get('/admin', (req, res) => {
 // 静态文件服务
 app.use(express.static(path.join(__dirname)));
 
+// 更新代理组配置的函数
+function updateProxyGroups(template, proxies) {
+    const proxyNames = proxies.map(p => p.name);
+    
+    template['proxy-groups'].forEach(group => {
+        switch(group.name) {
+            case '🚀 节点选择':
+                group.proxies = ['♻️ 自动选择', '🔯 故障转移', 'DIRECT', ...proxyNames];
+                break;
+            case '♻️ 自动选择':
+            case '🔯 故障转移':
+                group.proxies = [...proxyNames];
+                break;
+            case '🌍 国外媒体':
+            case '📲 电报信息':
+                group.proxies = ['🚀 节点选择', '♻️ 自动选择', '🎯 全球直连'];
+                break;
+            case 'Ⓜ️ 微软服务':
+            case '🍎 苹果服务':
+                group.proxies = ['🎯 全球直连', '🚀 节点选择'];
+                break;
+            case '🎯 全球直连':
+                group.proxies = ['DIRECT', '🚀 节点选择'];
+                break;
+            case '🛑 全球拦截':
+                group.proxies = ['REJECT', 'DIRECT'];
+                break;
+        }
+    });
+    
+    return template;
+}
+
 // 解析 vless 链接
 function parseVlessLink(link) {
     try {
@@ -179,10 +212,7 @@ app.post('/api/check', (req, res) => {
         template.proxies = proxies;
         
         // 更新代理组
-        const morenGroup = template['proxy-groups'].find(g => g.name === 'moren');
-        if (morenGroup) {
-            morenGroup.proxies = proxies.map(p => p.name);
-        }
+        updateProxyGroups(template, proxies);
 
         // 生成 YAML 字符串
         const yamlStr = yaml.dump(template, {
@@ -256,10 +286,7 @@ app.post('/api/generate', (req, res) => {
         template.proxies = proxies;
         
         // 更新代理组
-        const morenGroup = template['proxy-groups'].find(g => g.name === 'moren');
-        if (morenGroup) {
-            morenGroup.proxies = proxies.map(p => p.name);
-        }
+        updateProxyGroups(template, proxies);
 
         // 生成 YAML 字符串
         const yamlStr = yaml.dump(template, {
@@ -366,10 +393,7 @@ app.get('/subscribe/:id', async (req, res) => {
         }).filter(Boolean);
 
         // 更新代理组
-        const morenGroup = template['proxy-groups'].find(g => g.name === 'moren');
-        if (morenGroup) {
-            morenGroup.proxies = template.proxies.map(p => p.name);
-        }
+        updateProxyGroups(template, template.proxies);
 
         const yamlStr = yaml.dump(template, {
             lineWidth: -1,
@@ -411,3 +435,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`服务器运行在端口 ${PORT}`);
 });
+
