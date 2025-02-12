@@ -2,26 +2,35 @@ version: '3'
 services:
   nodeconfig:
     build: .
+    container_name: nodeconfig
     ports:
       - "3000:3000"
     restart: always
     environment:
+      - NODE_ENV=production
       - DB_HOST=mysql
       - DB_USER=nodeconfig
       - DB_PASSWORD=nodeconfig123
       - DB_NAME=nodeconfig_db
-      - SERVER_IP=${SERVER_IP:-localhost}  # 添加服务器IP环境变量
+      - SERVER_IP=${SERVER_IP:-localhost}
     volumes:
       - ./src:/app/src
+      - node_modules:/app/src/node_modules
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       nodeconfig_net:
         ipv4_address: 172.20.0.2
 
   mysql:
     image: mysql:8.0
+    container_name: nodeconfig-mysql
     command: --default-authentication-plugin=mysql_native_password
     restart: always
     ports:
@@ -45,6 +54,7 @@ services:
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
+    container_name: nodeconfig-phpmyadmin
     ports:
       - "8080:80"
     environment:
@@ -63,6 +73,7 @@ services:
 
 volumes:
   mysql_data:
+  node_modules:
 
 networks:
   nodeconfig_net:
