@@ -13,7 +13,8 @@ services:
     volumes:
       - ./src:/app/src
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - nodeconfig_net
 
@@ -26,9 +27,16 @@ services:
       - MYSQL_DATABASE=nodeconfig_db
       - MYSQL_USER=nodeconfig
       - MYSQL_PASSWORD=nodeconfig123
+    ports:
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "nodeconfig", "-pnodeconfig123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - nodeconfig_net
 
@@ -37,3 +45,4 @@ volumes:
 
 networks:
   nodeconfig_net:
+    driver: bridge
