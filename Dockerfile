@@ -16,14 +16,13 @@ RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && apk del tzdata
 
 # 创建目录
-RUN mkdir -p /app/src /app/logs
+RUN mkdir -p /app
 
-# 复制项目文件
-COPY src/package.json ./
-RUN npm install --production
+# 复制所有源代码
+COPY src/ /app/
 
-# 复制源代码
-COPY src/ ./
+# 安装依赖
+RUN npm install
 
 # 设置权限
 RUN chown -R node:node /app \
