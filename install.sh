@@ -42,21 +42,9 @@ install_base() {
     # 安装必要的包
     apt install -y curl wget git apt-transport-https ca-certificates gnupg lsb-release
 
-    # 添加 Docker 官方 GPG 密钥
-    echo -e "${yellow}添加 Docker 仓库...${plain}"
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-
-    # 设置稳定版仓库
-    echo \
-      "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
-      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    # 更新apt包索引
-    apt update
-
     # 安装 Docker
     echo -e "${yellow}安装 Docker...${plain}"
-    apt install -y docker-ce docker-ce-cli containerd.io
+    curl -fsSL https://get.docker.com | sh
 
     # 启动 Docker
     systemctl start docker
@@ -98,112 +86,14 @@ deploy_service() {
         echo -e "${yellow}清理旧文件...${plain}"
         rm -rf /opt/nodeconfig
     fi
-    
-    # 创建新的工作目录
-    echo -e "${yellow}创建工作目录...${plain}"
+
+    # 创建工作目录
     mkdir -p /opt/nodeconfig
     cd /opt/nodeconfig || exit
 
-    # 创建必要的文件
-    echo -e "${yellow}创建配置文件...${plain}"
-
-    # 创建 Dockerfile
-    echo -e "${yellow}创建 Dockerfile...${plain}"
-    cat > Dockerfile << 'EOF'
-FROM node:18-alpine
-
-WORKDIR /app
-
-# 先复制 package.json
-COPY src/package.json ./
-RUN npm install
-
-# 再复制其他文件
-COPY src/ ./
-
-EXPOSE 3000
-
-CMD ["node", "server.js"]
-EOF
-
-    # 创建 docker-compose.yml
-    echo -e "${yellow}创建 docker-compose.yml...${plain}"
-    cat > docker-compose.yml << 'EOF'
-version: '3'
-services:
-  nodeconfig:
-    build: .
-    ports:
-      - "3000:3000"
-    restart: always
-    networks:
-      - nodeconfig_net
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-    depends_on:
-      - nodeconfig
-    restart: always
-    networks:
-      - nodeconfig_net
-
-networks:
-  nodeconfig_net:
-EOF
-
-    # 创建 nginx.conf
-    echo -e "${yellow}创建 Nginx 配置...${plain}"
-    cat > nginx.conf << 'EOF'
-server {
-    listen 80;
-    server_name localhost;
-
-    location / {
-        proxy_pass http://nodeconfig:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-EOF
-
-    # 创建 src 目录
-    echo -e "${yellow}创建源代码目录...${plain}"
-    mkdir -p src
-
-    # 创建 package.json
-    echo -e "${yellow}创建 package.json...${plain}"
-    cat > src/package.json << 'EOF'
-{
-  "name": "node-config-generator",
-  "version": "1.0.0",
-  "description": "节点配置生成工具",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.17.1",
-    "js-yaml": "^4.1.0"
-  }
-}
-EOF
-
-    # 下载源代码文件
-    echo -e "${yellow}下载源代码文件...${plain}"
-    curl -o src/index.html https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/index.html
-    curl -o src/server.js https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/server.js
-    curl -o src/template.yml https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/template.yml
-
-    # 设置权限
-    chmod -R 755 /opt/nodeconfig
+    # 克隆项目
+    echo -e "${yellow}下载项目文件...${plain}"
+    git clone -b control https://github.com/DavisNova/nodeconfig.git .
 
     # 启动服务
     echo -e "${yellow}启动服务...${plain}"
