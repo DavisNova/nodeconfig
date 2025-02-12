@@ -93,42 +93,32 @@ app.get('/api/admin/subscriptions', async (req, res) => {
         
         const offset = (page - 1) * size;
         
-        let query = 'SELECT * FROM subscriptions WHERE 1=1';
-        let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
-        let params = [];
-        
-        if (search) {
-            query += ' AND (username LIKE ? OR description LIKE ?)';
-            countQuery += ' AND (username LIKE ? OR description LIKE ?)';
-            params.push(`%${search}%`, `%${search}%`);
-        }
-        
-        if (status) {
-            query += ' AND status = ?';
-            countQuery += ' AND status = ?';
-            params.push(status);
-        }
-        
         const conn = await pool.getConnection();
         try {
+            let query = 'SELECT * FROM subscriptions WHERE 1=1';
+            let countQuery = 'SELECT COUNT(*) as total FROM subscriptions WHERE 1=1';
+            let params = [];
+            
+            if (search) {
+                query += ` AND (username LIKE '%${search}%' OR description LIKE '%${search}%')`;
+                countQuery += ` AND (username LIKE '%${search}%' OR description LIKE '%${search}%')`;
+            }
+            
+            if (status) {
+                query += ` AND status = '${status}'`;
+                countQuery += ` AND status = '${status}'`;
+            }
+            
             // 执行计数查询
-            const [total] = await conn.execute(countQuery, params);
+            const [totalRows] = await conn.query(countQuery);
             
-            // 添加分页参数并执行主查询
-            query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-            const queryParams = [...params, size, offset];
-            const [subscriptions] = await conn.execute(query, queryParams);
+            // 添加分页并执行主查询
+            query += ` ORDER BY created_at DESC LIMIT ${size} OFFSET ${offset}`;
+            const [subscriptions] = await conn.query(query);
             
-            // 格式化响应数据
-            const formattedSubscriptions = subscriptions.map(sub => ({
-                ...sub,
-                created_at: sub.created_at ? new Date(sub.created_at).toISOString() : null,
-                updated_at: sub.updated_at ? new Date(sub.updated_at).toISOString() : null
-            }));
-
             res.json({
-                subscriptions: formattedSubscriptions,
-                total: total[0].total,
+                subscriptions,
+                total: totalRows[0].total,
                 page,
                 size
             });
