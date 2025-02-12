@@ -87,6 +87,12 @@
             max-width: 200px;
             margin: 0 auto;
         }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
     </style>
 </head>
 <body>
@@ -175,23 +181,26 @@
             <!-- 搜索和过滤 -->
             <div class="card mb-4">
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <input type="text" class="form-control" id="searchSubscription" placeholder="搜索用户名/备注">
+                    <form id="searchForm" onsubmit="return false;">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control" id="searchSubscription" 
+                                       placeholder="搜索用户名/备注">
+                            </div>
+                            <div class="col-md-2">
+                                <select class="form-select" id="filterStatus">
+                                    <option value="">全部状态</option>
+                                    <option value="active">活跃</option>
+                                    <option value="disabled">停用</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-primary" onclick="searchSubscriptions()">
+                                    <i class="bi bi-search"></i> 搜索
+                                </button>
+                            </div>
                         </div>
-                        <div class="col-md-2">
-                            <select class="form-select" id="filterStatus">
-                                <option value="">全部状态</option>
-                                <option value="active">活跃</option>
-                                <option value="inactive">停用</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <button class="btn btn-primary" onclick="searchSubscriptions()">
-                                <i class="bi bi-search"></i> 搜索
-                            </button>
-                        </div>
-                    </div>
+                    </form>
                 </div>
             </div>
 
@@ -218,7 +227,7 @@
                     </div>
                     <!-- 分页 -->
                     <nav aria-label="订阅列表分页">
-                        <ul class="pagination" id="subscriptionPagination">
+                        <ul class="pagination justify-content-center" id="subscriptionPagination">
                             <!-- 动态加载分页 -->
                         </ul>
                     </nav>
@@ -285,7 +294,7 @@
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const targetSection = e.target.getAttribute('data-section');
+                    const targetSection = e.target.closest('.nav-link').getAttribute('data-section');
                     switchSection(targetSection);
                 });
             });
@@ -293,14 +302,19 @@
             // 搜索框回车事件
             document.getElementById('searchSubscription').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
+                    e.preventDefault();
                     searchSubscriptions();
                 }
+            });
+
+            // 状态筛选变化事件
+            document.getElementById('filterStatus').addEventListener('change', () => {
+                searchSubscriptions();
             });
         });
 
         // 切换页面部分
         function switchSection(sectionId) {
-            // 更新导航激活状态
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.remove('active');
                 if (link.getAttribute('data-section') === sectionId) {
@@ -308,13 +322,11 @@
                 }
             });
 
-            // 更新内容显示
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
             });
             document.getElementById(sectionId).classList.add('active');
 
-            // 如果切换到订阅管理，重新加载数据
             if (sectionId === 'subscriptions') {
                 loadSubscriptions(1);
             }
@@ -324,6 +336,7 @@
         async function loadStats() {
             try {
                 const response = await fetch('/api/admin/stats');
+                if (!response.ok) throw new Error('获取统计数据失败');
                 const data = await response.json();
                 
                 document.getElementById('totalSubscriptions').textContent = data.totalSubscriptions;
@@ -332,113 +345,184 @@
                 document.getElementById('todayVisits').textContent = data.todayVisits;
             } catch (error) {
                 console.error('Error loading stats:', error);
+                showToast('error', '加载统计数据失败');
             }
         }
-
-        // 加载订阅列表
+                // 加载订阅列表
         async function loadSubscriptions(page) {
             try {
+                currentPage = page;
                 const searchTerm = document.getElementById('searchSubscription').value;
                 const status = document.getElementById('filterStatus').value;
                 
-                const response = await fetch(`/api/admin/subscriptions?page=${page}&size=${pageSize}&search=${searchTerm}&status=${status}`);
+                const queryParams = new URLSearchParams({
+                    page: page,
+                    size: pageSize,
+                    search: searchTerm,
+                    status: status
+                });
+                
+                const response = await fetch(`/api/admin/subscriptions?${queryParams}`);
+                if (!response.ok) throw new Error('获取订阅列表失败');
+                
                 const data = await response.json();
+                if (!data.subscriptions) {
+                    throw new Error('返回数据格式错误');
+                }
                 
                 renderSubscriptionsList(data.subscriptions);
                 renderPagination(data.total, page);
             } catch (error) {
                 console.error('Error loading subscriptions:', error);
+                document.getElementById('subscriptionsList').innerHTML = `
+                    <tr><td colspan="7" class="text-center text-danger">加载失败: ${error.message}</td></tr>
+                `;
             }
         }
 
         // 渲染订阅列表
         function renderSubscriptionsList(subscriptions) {
             const tbody = document.getElementById('subscriptionsList');
+            
+            if (!subscriptions || subscriptions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">暂无数据</td></tr>';
+                return;
+            }
+            
             tbody.innerHTML = subscriptions.map(sub => `
                 <tr>
-                    <td>${sub.username}</td>
-                    <td>${sub.description || '-'}</td>
+                    <td>${escapeHtml(sub.username)}</td>
+                    <td>${escapeHtml(sub.description || '-')}</td>
                     <td>
-                        <div class="text-truncate" style="max-width: 200px;">
-                            ${sub.subscription_url}
+                        <div class="text-truncate" style="max-width: 200px;" title="${escapeHtml(sub.subscription_url)}">
+                            <a href="${escapeHtml(sub.subscription_url)}" target="_blank">
+                                ${escapeHtml(sub.subscription_url)}
+                            </a>
                         </div>
                     </td>
-                    <td>${new Date(sub.created_at).toLocaleString()}</td>
-                    <td>${new Date(sub.updated_at).toLocaleString()}</td>
+                    <td>${formatDate(sub.created_at)}</td>
+                    <td>${formatDate(sub.updated_at)}</td>
                     <td>
                         <span class="badge bg-${sub.status === 'active' ? 'success' : 'danger'}">
                             ${sub.status === 'active' ? '活跃' : '停用'}
                         </span>
                     </td>
-                    <td class="action-buttons">
-                        <button class="btn btn-sm btn-primary" onclick="viewSubscription(${sub.id})">
-                            <i class="bi bi-eye"></i>
-                        </button>
-                        <button class="btn btn-sm btn-warning" onclick="editSubscription(${sub.id})">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteSubscription(${sub.id})">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-primary" onclick="viewSubscription(${sub.id})" title="查看">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-warning" onclick="editSubscription(${sub.id})" title="编辑">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteSubscription(${sub.id})" title="删除">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `).join('');
+        }
+
+        // 格式化日期
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        // HTML 转义
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
                 // 渲染分页
         function renderPagination(total, currentPage) {
             const totalPages = Math.ceil(total / pageSize);
             const pagination = document.getElementById('subscriptionPagination');
             
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
             let html = '';
             
             // 上一页
             html += `
                 <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-                    <a class="page-link" href="#" onclick="loadSubscriptions(${currentPage - 1})">上一页</a>
+                    <a class="page-link" href="javascript:void(0)" onclick="loadSubscriptions(${currentPage - 1})">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
                 </li>
             `;
             
             // 页码
             for (let i = 1; i <= totalPages; i++) {
-                html += `
-                    <li class="page-item ${i === currentPage ? 'active' : ''}">
-                        <a class="page-link" href="#" onclick="loadSubscriptions(${i})">${i}</a>
-                    </li>
-                `;
+                if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                    html += `
+                        <li class="page-item ${i === currentPage ? 'active' : ''}">
+                            <a class="page-link" href="javascript:void(0)" onclick="loadSubscriptions(${i})">${i}</a>
+                        </li>
+                    `;
+                } else if (i === currentPage - 3 || i === currentPage + 3) {
+                    html += '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                }
             }
             
             // 下一页
             html += `
                 <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-                    <a class="page-link" href="#" onclick="loadSubscriptions(${currentPage + 1})">下一页</a>
+                    <a class="page-link" href="javascript:void(0)" onclick="loadSubscriptions(${currentPage + 1})">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
                 </li>
             `;
             
             pagination.innerHTML = html;
         }
 
+        // 搜索订阅
+        function searchSubscriptions() {
+            loadSubscriptions(1);
+        }
+
         // 查看订阅详情
         async function viewSubscription(id) {
             try {
                 const response = await fetch(`/api/admin/subscriptions/${id}`);
+                if (!response.ok) throw new Error('获取订阅详情失败');
+                
                 const data = await response.json();
                 
                 // 填充订阅信息
                 document.getElementById('subscriptionInfo').innerHTML = `
-                    <p><strong>用户名：</strong>${data.username}</p>
-                    <p><strong>创建时间：</strong>${new Date(data.created_at).toLocaleString()}</p>
+                    <p><strong>用户名：</strong>${escapeHtml(data.username)}</p>
+                    <p><strong>创建时间：</strong>${formatDate(data.created_at)}</p>
                     <p><strong>状态：</strong>${data.status === 'active' ? '活跃' : '停用'}</p>
-                    <p><strong>备注：</strong>${data.description || '-'}</p>
-                    <p><strong>订阅链接：</strong><br>${data.subscription_url}</p>
+                    <p><strong>备注：</strong>${escapeHtml(data.description || '-')}</p>
+                    <p><strong>订阅链接：</strong><br>${escapeHtml(data.subscription_url)}</p>
                 `;
                 
                 // 显示二维码
                 document.getElementById('subscriptionQR').innerHTML = `
-                    <img src="${data.qrcode_url}" class="qr-code" alt="订阅二维码">
+                    <img src="${escapeHtml(data.qrcode_url)}" class="qr-code" alt="订阅二维码">
                 `;
                 
                 // 显示 YAML 配置
-                document.getElementById('yamlConfig').textContent = data.yaml_config;
+                document.getElementById('yamlConfig').textContent = data.yaml_config || '暂无配置';
                 
                 // 显示模态框
                 subscriptionModal.show();
@@ -450,24 +534,13 @@
 
         // 复制订阅链接
         function copySubscriptionUrl() {
-            const urlText = document.querySelector('#subscriptionInfo p:nth-last-child(1)').textContent.split('：')[1];
-            navigator.clipboard.writeText(urlText).then(() => {
-                alert('订阅链接已复制到剪贴板');
-            }).catch(err => {
-                console.error('复制失败:', err);
-                alert('复制失败，请手动复制');
-            });
-        }
-
-        // 搜索订阅
-        function searchSubscriptions() {
-            loadSubscriptions(1); // 重置到第一页并搜索
-        }
-
-        // 编辑订阅
-        function editSubscription(id) {
-            // TODO: 实现编辑功能
-            alert('编辑功能开发中...');
+            const urlText = document.querySelector('#subscriptionInfo p:nth-last-child(1)').textContent.split('：')[1].trim();
+            navigator.clipboard.writeText(urlText)
+                .then(() => alert('订阅链接已复制到剪贴板'))
+                .catch(err => {
+                    console.error('复制失败:', err);
+                    alert('复制失败，请手动复制');
+                });
         }
 
         // 删除订阅
@@ -481,17 +554,16 @@
                     method: 'DELETE'
                 });
                 
-                if (response.ok) {
-                    alert('删除成功');
-                    loadSubscriptions(currentPage); // 重新加载当前页
-                } else {
-                    alert('删除失败');
-                }
+                if (!response.ok) throw new Error('删除失败');
+                
+                await loadSubscriptions(currentPage);
+                alert('删除成功');
             } catch (error) {
                 console.error('Error deleting subscription:', error);
-                alert('删除失败');
+                alert('删除失败: ' + error.message);
             }
         }
     </script>
 </body>
 </html>
+    
