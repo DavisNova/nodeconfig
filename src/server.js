@@ -554,9 +554,9 @@ app.post('/api/save', async (req, res) => {
 
             // 记录操作日志
             await conn.execute(
-                'INSERT INTO operation_logs (operation_type, operator, target_id, details) VALUES (?, ?, ?, ?)',
-                ['create_subscription', username, result.insertId, '创建新订阅']
-            );
+                    'INSERT INTO operation_logs (action, target_type, target_id, details, ip_address) VALUES (?, ?, ?, ?, ?)',
+                    ['create_subscription', 'subscription', result.insertId, '创建新订阅', req.ip]
+                );
 
             res.json({
                 success: true,
