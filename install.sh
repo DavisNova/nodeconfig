@@ -90,15 +90,19 @@ install_base() {
 deploy_service() {
     echo -e "${yellow}开始部署服务...${plain}"
     
-    # 创建工作目录
-    mkdir -p /opt/nodeconfig
-    cd /opt/nodeconfig
-
-    # 如果目录不为空，先清理
-    if [ "$(ls -A /opt/nodeconfig)" ]; then
-        echo -e "${yellow}目录不为空，正在清理...${plain}"
-        rm -rf /opt/nodeconfig/*
+    # 停止并清理现有服务
+    if [ -d "/opt/nodeconfig" ]; then
+        echo -e "${yellow}停止现有服务...${plain}"
+        cd /opt/nodeconfig && docker-compose down 2>/dev/null
+        cd /
+        echo -e "${yellow}清理旧文件...${plain}"
+        rm -rf /opt/nodeconfig
     fi
+    
+    # 创建新的工作目录
+    echo -e "${yellow}创建工作目录...${plain}"
+    mkdir -p /opt/nodeconfig
+    cd /opt/nodeconfig || exit
 
     # 创建必要的文件
     echo -e "${yellow}创建配置文件...${plain}"
@@ -192,7 +196,7 @@ EOF
 }
 EOF
 
-    # 克隆其他必要的源文件
+    # 下载源代码文件
     echo -e "${yellow}下载源代码文件...${plain}"
     curl -o src/index.html https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/index.html
     curl -o src/server.js https://raw.githubusercontent.com/DavisNova/nodeconfig/main/src/server.js
