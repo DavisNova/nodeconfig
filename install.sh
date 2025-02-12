@@ -39,31 +39,49 @@ install_base() {
     # 更新系统包
     apt update
     
-    # 安装基础工具
-    apt install -y curl wget git
+    # 安装必要的包
+    apt install -y curl wget git apt-transport-https ca-certificates gnupg lsb-release
+
+    # 添加 Docker 官方 GPG 密钥
+    echo -e "${yellow}添加 Docker 仓库...${plain}"
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+    # 设置稳定版仓库
+    echo \
+      "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
+      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    # 更新apt包索引
+    apt update
 
     # 安装 Docker
-    echo -e "${yellow}开始安装 Docker...${plain}"
-    curl -fsSL https://get.docker.com | sh
-    
-    # 启动 Docker 服务
+    echo -e "${yellow}安装 Docker...${plain}"
+    apt install -y docker-ce docker-ce-cli containerd.io
+
+    # 启动 Docker
     systemctl start docker
     systemctl enable docker
-    
-    # 安装 Docker Compose V2
-    echo -e "${yellow}开始安装 Docker Compose...${plain}"
-    mkdir -p ~/.docker/cli-plugins/
-    curl -SL https://github.com/docker/compose/releases/download/v2.24.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
-    chmod +x ~/.docker/cli-plugins/docker-compose
-    
-    # 创建软链接以确保全局可用
-    ln -sf ~/.docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-    
+
+    # 安装 Docker Compose
+    echo -e "${yellow}安装 Docker Compose...${plain}"
+    curl -L "https://github.com/docker/compose/releases/download/v2.24.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+
     # 验证安装
     echo -e "${yellow}验证安装...${plain}"
-    docker --version || echo -e "${red}Docker 安装失败${plain}"
-    docker compose version || echo -e "${red}Docker Compose 安装失败${plain}"
-    
+    if ! command -v docker &> /dev/null; then
+        echo -e "${red}Docker 安装失败${plain}"
+        exit 1
+    fi
+    if ! command -v docker-compose &> /dev/null; then
+        echo -e "${red}Docker Compose 安装失败${plain}"
+        exit 1
+    fi
+
+    docker --version
+    docker-compose --version
+
     echo -e "${green}依赖安装完成！${plain}"
     sleep 2
 }
@@ -80,9 +98,13 @@ deploy_service() {
     git clone https://github.com/DavisNova/nodeconfig.git .
 
     # 启动服务
-    docker compose up -d
+    docker-compose up -d
 
-    echo -e "${green}服务部署完成！${plain}"
+    if [ $? -eq 0 ]; then
+        echo -e "${green}服务部署完成！${plain}"
+    else
+        echo -e "${red}服务部署失败！${plain}"
+    fi
     sleep 2
 }
 
@@ -115,33 +137,33 @@ show_menu() {
                 continue
                 ;;
             3)
-                cd /opt/nodeconfig && docker compose up -d
+                cd /opt/nodeconfig && docker-compose up -d
                 echo -e "${green}服务已启动！${plain}"
                 sleep 2
                 continue
                 ;;
             4)
-                cd /opt/nodeconfig && docker compose down
+                cd /opt/nodeconfig && docker-compose down
                 echo -e "${green}服务已停止！${plain}"
                 sleep 2
                 continue
                 ;;
             5)
-                cd /opt/nodeconfig && docker compose restart
+                cd /opt/nodeconfig && docker-compose restart
                 echo -e "${green}服务已重启！${plain}"
                 sleep 2
                 continue
                 ;;
             6)
-                cd /opt/nodeconfig && docker compose ps
+                cd /opt/nodeconfig && docker-compose ps
                 echo && read -p "按回车继续..." 
                 ;;
             7)
-                cd /opt/nodeconfig && docker compose logs
+                cd /opt/nodeconfig && docker-compose logs
                 echo && read -p "按回车继续..." 
                 ;;
             8)
-                cd /opt/nodeconfig && docker compose down
+                cd /opt/nodeconfig && docker-compose down
                 rm -rf /opt/nodeconfig
                 echo -e "${green}服务已卸载！${plain}"
                 sleep 2
