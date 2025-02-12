@@ -37,15 +37,6 @@ mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" -e "
         INDEX idx_subscription_id (subscription_id),
         INDEX idx_node_type (node_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='节点详情表';
-
-    CREATE TABLE IF NOT EXISTS admins (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(50) NOT NULL UNIQUE COMMENT '管理员用户名',
-        password VARCHAR(255) NOT NULL COMMENT '密码哈希',
-        last_login TIMESTAMP NULL COMMENT '最后登录时间',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-        INDEX idx_username (username)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='管理员表';
 "
 
 # 检查日志目录权限
