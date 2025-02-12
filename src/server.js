@@ -654,20 +654,20 @@ app.use((req, res) => {
 
 // 更新代理组配置
 function updateProxyGroups(template, proxies) {
-    if (!template.proxy_groups) {
-        template.proxy_groups = [];
+    if (!Array.isArray(proxies)) {
+        console.error('Invalid proxies input');
+        proxies = [];
     }
 
     // 获取所有代理名称
     const proxyNames = proxies.map(proxy => proxy.name);
 
-    // 更新或创建代理组
+    // 更新代理组配置
     template.proxy_groups = [
         {
             name: '🚀 节点选择',
             type: 'select',
-            proxies: ['♻️ 自动选择', '🎯 全球直连', ...proxyNames],
-            use: []  // 添加 use 字段
+            proxies: ['♻️ 自动选择', '🎯 全球直连', ...proxyNames]
         },
         {
             name: '♻️ 自动选择',
@@ -675,22 +675,44 @@ function updateProxyGroups(template, proxies) {
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
             tolerance: 50,
-            proxies: proxyNames,
-            use: []  // 添加 use 字段
+            proxies: proxyNames
         },
         {
             name: '🎯 全球直连',
             type: 'select',
-            proxies: ['DIRECT'],
-            use: []  // 添加 use 字段
+            proxies: ['DIRECT']
         },
         {
             name: '🔰 故障转移',
             type: 'fallback',
-            proxies: proxyNames,
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
-            use: []  // 添加 use 字段
+            proxies: proxyNames
+        },
+        {
+            name: '🌍 国外媒体',
+            type: 'select',
+            proxies: ['🚀 节点选择', '♻️ 自动选择', '🎯 全球直连']
+        },
+        {
+            name: '📲 电报信息',
+            type: 'select',
+            proxies: ['🚀 节点选择', '🎯 全球直连']
+        },
+        {
+            name: 'Ⓜ️ 微软服务',
+            type: 'select',
+            proxies: ['🎯 全球直连', '🚀 节点选择']
+        },
+        {
+            name: '🍎 苹果服务',
+            type: 'select',
+            proxies: ['🎯 全球直连', '🚀 节点选择']
+        },
+        {
+            name: '🛑 全球拦截',
+            type: 'select',
+            proxies: ['REJECT', 'DIRECT']
         }
     ];
 }
