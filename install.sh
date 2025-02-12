@@ -35,8 +35,35 @@ check_sys() {
 # 安装基础组件
 install_base() {
     echo -e "${yellow}开始安装依赖...${plain}"
+    
+    # 更新系统包
     apt update
-    apt install -y curl wget git docker.io docker-compose-plugin
+    
+    # 安装基础工具
+    apt install -y curl wget git
+
+    # 安装 Docker
+    echo -e "${yellow}开始安装 Docker...${plain}"
+    curl -fsSL https://get.docker.com | sh
+    
+    # 启动 Docker 服务
+    systemctl start docker
+    systemctl enable docker
+    
+    # 安装 Docker Compose V2
+    echo -e "${yellow}开始安装 Docker Compose...${plain}"
+    mkdir -p ~/.docker/cli-plugins/
+    curl -SL https://github.com/docker/compose/releases/download/v2.24.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+    chmod +x ~/.docker/cli-plugins/docker-compose
+    
+    # 创建软链接以确保全局可用
+    ln -sf ~/.docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+    
+    # 验证安装
+    echo -e "${yellow}验证安装...${plain}"
+    docker --version || echo -e "${red}Docker 安装失败${plain}"
+    docker compose version || echo -e "${red}Docker Compose 安装失败${plain}"
+    
     echo -e "${green}依赖安装完成！${plain}"
     sleep 2
 }
