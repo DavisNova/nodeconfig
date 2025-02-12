@@ -6,37 +6,110 @@
     <title>节点配置生成器</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        body {
+            background-color: #f5f5f5;
+            color: #333;
+        }
         .container {
             max-width: 800px;
             margin-top: 30px;
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #0d6efd;
+            font-family: monospace;
         }
         .form-control {
             font-family: monospace;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
         }
-        .example-text {
-            font-size: 0.85em;
-            color: #666;
+        .form-control:focus {
+            background-color: #fff;
+            box-shadow: 0 0 0 0.25rem rgba(13,110,253,.15);
+        }
+        .node-types {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+        }
+        .node-type-badge {
+            display: inline-block;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        .example-box {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        .btn-generate {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.1em;
+            margin-top: 20px;
+            border-radius: 10px;
+        }
+        .divider {
+            margin: 15px 0;
+            border-top: 1px solid #dee2e6;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>节点配置生成器</h2>
-        <form id="nodeForm" class="mt-4">
-            <div class="mb-3">
-                <label class="form-label">节点链接（每行一个）</label>
-                <textarea class="form-control" id="nodeLinks" rows="10" placeholder="支持以下格式：
-1. vless://uuid@host:port?type=tcp&security=reality&...
-2. host:port:username:password"></textarea>
+        <div class="logo">
+            <h1>NodeConfig</h1>
+            <p class="text-muted">节点配置生成工具</p>
+        </div>
+        
+        <form id="nodeForm">
+            <div class="node-types">
+                <h5>支持的节点类型：</h5>
+                <span class="node-type-badge bg-primary">VLESS</span>
+                <span class="node-type-badge bg-success">SOCKS5</span>
             </div>
+
             <div class="mb-3">
-                <div class="example-text">
-                    <strong>示例格式：</strong><br>
-                    vless://749f218f-e3a2-439e-9519-97e023a45eab@154.17.234.77:10555?type=tcp&security=reality&pbk=6f4MCXgzaep4XsQYpY2eZHqqbpLDlWqiO1_wjE1bsV4&fp=chrome&sni=yahoo.com&sid=ab6d&spx=%2F&flow=xtls-rprx-vision#temptest<br>
-                    45.192.39.149:63301:DdtUSM7A:4MaSifWk
+                <label class="form-label">节点链接</label>
+                <textarea 
+                    class="form-control" 
+                    id="nodeLinks" 
+                    rows="10" 
+                    placeholder="请输入节点链接，支持以下格式：
+1. VLESS: vless://uuid@host:port?参数...
+2. SOCKS5: host:port:username:password
+
+多个节点可以：
+- 每行一个节点
+- 使用英文分号(;)分隔
+"></textarea>
+            </div>
+
+            <div class="example-box">
+                <h6>示例格式：</h6>
+                <div class="text-muted">
+                    <small>VLESS:</small><br>
+                    <code>vless://749f218f-e3a2-439e-9519-97e023a45eab@154.17.234.77:10555?type=tcp&security=reality&pbk=6f4MCXgzaep4XsQYpY2eZHqqbpLDlWqiO1_wjE1bsV4&fp=chrome&sni=yahoo.com&sid=ab6d&spx=%2F&flow=xtls-rprx-vision#temptest</code>
+                    <div class="divider"></div>
+                    <small>SOCKS5:</small><br>
+                    <code>45.192.39.149:63301:DdtUSM7A:4MaSifWk</code>
                 </div>
             </div>
-            <button type="submit" class="btn btn-primary">生成配置</button>
+
+            <button type="submit" class="btn btn-primary btn-generate">
+                生成配置文件
+            </button>
         </form>
     </div>
 
@@ -45,13 +118,21 @@
             e.preventDefault();
             const nodeLinks = document.getElementById('nodeLinks').value;
             
+            // 处理换行和分号分隔
+            const nodes = nodeLinks.split(/[\n;]/).filter(n => n.trim());
+            
+            if (nodes.length === 0) {
+                alert('请输入至少一个节点链接');
+                return;
+            }
+
             try {
                 const response = await fetch('/api/generate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ nodes: nodeLinks.split('\n').filter(n => n.trim()) })
+                    body: JSON.stringify({ nodes })
                 });
 
                 if (response.ok) {
@@ -64,11 +145,12 @@
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } else {
-                    alert('生成配置文件失败');
+                    const error = await response.json();
+                    alert(error.message || '生成配置文件失败');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('发生错误');
+                alert('发生错误，请稍后重试');
             }
         });
     </script>
