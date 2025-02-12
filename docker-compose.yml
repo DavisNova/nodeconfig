@@ -10,6 +10,9 @@ services:
       - DB_USER=nodeconfig
       - DB_PASSWORD=nodeconfig123
       - DB_NAME=nodeconfig_db
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
     depends_on:
       - mysql
     networks:
@@ -39,6 +42,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./ssl:/etc/nginx/ssl
     depends_on:
       - nodeconfig
     restart: always
