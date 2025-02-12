@@ -652,6 +652,38 @@ app.use((req, res) => {
     });
 });
 
+// 更新代理组配置
+function updateProxyGroups(template, proxies) {
+    if (!template.proxy-groups) {
+        template['proxy-groups'] = [];
+    }
+
+    // 获取所有代理名称
+    const proxyNames = proxies.map(proxy => proxy.name);
+
+    // 更新或创建代理组
+    template['proxy-groups'] = [
+        {
+            name: '🚀 节点选择',
+            type: 'select',
+            proxies: ['♻️ 自动选择', '🎯 全球直连', ...proxyNames]
+        },
+        {
+            name: '♻️ 自动选择',
+            type: 'url-test',
+            url: 'http://www.gstatic.com/generate_204',
+            interval: 300,
+            tolerance: 50,
+            proxies: proxyNames
+        },
+        {
+            name: '🎯 全球直连',
+            type: 'select',
+            proxies: ['DIRECT']
+        }
+    ];
+}
+
 // 启动服务器
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
