@@ -666,7 +666,8 @@ function updateProxyGroups(template, proxies) {
         {
             name: '🚀 节点选择',
             type: 'select',
-            proxies: ['♻️ 自动选择', '🎯 全球直连', ...proxyNames]
+            proxies: ['♻️ 自动选择', '🎯 全球直连', ...proxyNames],
+            use: []  // 添加 use 字段
         },
         {
             name: '♻️ 自动选择',
@@ -674,12 +675,22 @@ function updateProxyGroups(template, proxies) {
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
             tolerance: 50,
-            proxies: proxyNames
+            proxies: proxyNames,
+            use: []  // 添加 use 字段
         },
         {
             name: '🎯 全球直连',
             type: 'select',
-            proxies: ['DIRECT']
+            proxies: ['DIRECT'],
+            use: []  // 添加 use 字段
+        },
+        {
+            name: '🔰 故障转移',
+            type: 'fallback',
+            proxies: proxyNames,
+            url: 'http://www.gstatic.com/generate_204',
+            interval: 300,
+            use: []  // 添加 use 字段
         }
     ];
 }
