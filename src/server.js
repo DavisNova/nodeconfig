@@ -667,21 +667,6 @@ function updateProxyGroups(template, proxies) {
         proxyNames.push('DIRECT');
     }
 
-// 更新代理组配置
-function updateProxyGroups(template, proxies) {
-    if (!Array.isArray(proxies)) {
-        console.error('Invalid proxies input');
-        proxies = [];
-    }
-
-    // 获取所有代理名称
-    const proxyNames = proxies.map(proxy => proxy.name);
-    
-    // 确保至少有一个代理
-    if (proxyNames.length === 0) {
-        proxyNames.push('DIRECT');
-    }
-
     // 更新代理组配置
     template.proxy_groups = [
         {
@@ -692,7 +677,7 @@ function updateProxyGroups(template, proxies) {
         {
             name: '♻️ 自动选择',
             type: 'url-test',
-            proxies: [...proxyNames],  // 使用实际的节点列表
+            proxies: [...proxyNames],
             url: 'http://www.gstatic.com/generate_204',
             interval: 300,
             tolerance: 50
@@ -700,7 +685,7 @@ function updateProxyGroups(template, proxies) {
         {
             name: '🔯 故障转移',
             type: 'fallback',
-            proxies: [...proxyNames],  // 使用实际的节点列表
+            proxies: [...proxyNames],
             url: 'http://www.gstatic.com/generate_204',
             interval: 300
         },
