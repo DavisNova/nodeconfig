@@ -9,69 +9,129 @@ app.use(express.static(path.join(__dirname)));
 
 // 解析 vless 链接
 function parseVlessLink(link) {
-    const regex = /vless:\/\/([^@]+)@([^:]+):(\d+)\?(.*)/;
-    const match = link.match(regex);
-    if (!match) return null;
+    try {
+        const regex = /vless:\/\/([^@]+)@([^:]+):(\d+)\?(.*)/;
+        const match = link.match(regex);
+        if (!match) {
+            console.log('Invalid VLESS link format');
+            return null;
+        }
 
-    const [_, uuid, server, port, params] = match;
-    const paramsObj = Object.fromEntries(
-        params.split('&').map(p => p.split('='))
-    );
+        const [_, uuid, server, port, params] = match;
+        const paramsObj = Object.fromEntries(
+            params.split('&').map(p => {
+                const [key, value] = p.split('=');
+                return [key, decodeURIComponent(value || '')];
+            })
+        );
 
-    return {
-        name: `vless-${server}-${port}`,
-        type: 'vless',
-        server,
-        port: parseInt(port),
-        uuid,
-        network: 'tcp',
-        udp: true,
-        tls: true,
-        flow: 'xtls-rprx-vision',
-        servername: paramsObj.sni || 'yahoo.com',
-        'reality-opts': {
-            'public-key': paramsObj.pbk,
-            'short-id': paramsObj.sid
-        },
-        'client-fingerprint': 'chrome'
-    };
+        // 生成节点名称
+        const name = `vless-${server}-${port}`;
+
+        return {
+            name,
+            type: 'vless',
+            server,
+            port: parseInt(port),
+            uuid,
+            network: paramsObj.type || 'tcp',
+            udp: true,
+            tls: true,
+            flow: 'xtls-rprx-vision',
+            servername: paramsObj.sni || 'yahoo.com',
+            'reality-opts': {
+                'public-key': paramsObj.pbk || '',
+                'short-id': paramsObj.sid || ''
+            },
+            'client-fingerprint': paramsObj.fp || 'chrome'
+        };
+    } catch (error) {
+        console.error('Error parsing VLESS link:', error);
+        return null;
+    }
 }
 
 // 解析 socks5 链接
 function parseSocks5Link(link) {
-    const [server, port, username, password] = link.split(':');
-    return {
-        name: `socks5-${server}-${port}`,
-        type: 'socks5',
-        server,
-        port: parseInt(port),
-        username,
-        password,
-        'skip-cert-verify': true,
-        udp: true
-    };
+    try {
+        const parts = link.split(':');
+        if (parts.length !== 4) {
+            console.log('Invalid SOCKS5 link format');
+            return null;
+        }
+
+        const [server, port, username, password] = parts;
+        
+        // 验证端口号
+        const portNum = parseInt(port);
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+            console.log('Invalid port number');
+            return null;
+        }
+
+        return {
+            name: `socks5-${server}-${port}`,
+            type: 'socks5',
+            server,
+            port: portNum,
+            username,
+            password,
+            'skip-cert-verify': true,
+            udp: true
+        };
+    } catch (error) {
+        console.error('Error parsing SOCKS5 link:', error);
+        return null;
+    }
 }
 
 // 生成配置的 API 端点
 app.post('/api/generate', (req, res) => {
     try {
         const { nodes } = req.body;
+        
+        if (!Array.isArray(nodes) || nodes.length === 0) {
+            return res.status(400).json({ 
+                error: true, 
+                message: '请提供至少一个有效的节点链接' 
+            });
+        }
+
         const proxies = [];
         const template = yaml.load(fs.readFileSync(path.join(__dirname, 'template.yml'), 'utf8'));
+        const errors = [];
 
-        // 解析每个节点链接
-        nodes.forEach(node => {
-            if (node.startsWith('vless://')) {
-                const proxy = parseVlessLink(node);
-                if (proxy) proxies.push(proxy);
-            } else if (node.includes(':')) {
-                const proxy = parseSocks5Link(node);
-                if (proxy) proxies.push(proxy);
+        // 解析每个节点
+        nodes.forEach((node, index) => {
+            const trimmedNode = node.trim();
+            if (!trimmedNode) return;
+
+            let proxy = null;
+            if (trimmedNode.startsWith('vless://')) {
+                proxy = parseVlessLink(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 VLESS 节点格式错误`);
+                }
+            } else if (trimmedNode.includes(':')) {
+                proxy = parseSocks5Link(trimmedNode);
+                if (!proxy) {
+                    errors.push(`第 ${index + 1} 个 SOCKS5 节点格式错误`);
+                }
+            } else {
+                errors.push(`第 ${index + 1} 个节点格式无法识别`);
+            }
+
+            if (proxy) {
+                proxies.push(proxy);
             }
         });
 
+        // 如果没有有效节点
         if (proxies.length === 0) {
-            return res.status(400).json({ error: '没有有效的节点配置' });
+            return res.status(400).json({
+                error: true,
+                message: '没有找到有效的节点配置\n' + errors.join('\n')
+            });
         }
 
         // 更新配置
@@ -95,15 +155,21 @@ app.post('/api/generate', (req, res) => {
         res.send(yamlStr);
 
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: '生成配置文件时发生错误' });
+        console.error('Error generating config:', error);
+        res.status(500).json({ 
+            error: true, 
+            message: '生成配置文件时发生错误' 
+        });
     }
 });
 
 // 错误处理中间件
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ error: '服务器内部错误' });
+    res.status(500).json({ 
+        error: true, 
+        message: '服务器内部错误' 
+    });
 });
 
 // 启动服务器
