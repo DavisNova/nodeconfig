@@ -1,0 +1,52 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+
+# 日志
+logs/
+*.log
+
+# 数据库
+data/
+mysql_data/
+
+# SSL证书
+ssl/
+*.pem
+*.key
+*.crt
+
+# IDE/编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# 构建输出
+dist/
+build/
+out/
+
+# 配置文件备份
+*.bak
+*.backup
+config.yaml.bak
+
+# 测试覆盖率报告
+coverage/
